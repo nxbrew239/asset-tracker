@@ -36,6 +36,34 @@
       text-align: center;
     }
 
+    /* 필터 버튼 스타일 */
+    .filter-container {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+
+    .filter-btn {
+      padding: 8px 16px;
+      background-color: #e8eaed;
+      color: var(--text-sub);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: auto;
+      margin-top: 0;
+      transition: all 0.2s;
+    }
+
+    .filter-btn.active {
+      background-color: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+
     .card {
       background: var(--card-bg);
       border: 1px solid var(--border);
@@ -119,13 +147,15 @@
     }
 
     input[type="date"],
-    input[type="number"] {
+    input[type="number"],
+    select {
       width: 100%;
       padding: 10px;
       border: 1px solid var(--border);
       border-radius: 6px;
       font-size: 1rem;
       box-sizing: border-box;
+      background-color: #ffffff;
     }
 
     .calc-preview {
@@ -209,6 +239,16 @@
       text-align: left;
     }
 
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #e8eaed;
+      color: var(--text-sub);
+      margin-top: 2px;
+    }
+
     .btn-action {
       background: none;
       border: none;
@@ -235,6 +275,13 @@
 <div class="container">
   <h1>📈 일자별 자산 기록기 ($)</h1>
 
+  <!-- 명의 필터 (기본: 전체 보기) -->
+  <div class="filter-container">
+    <button class="filter-btn active" id="filter-all" onclick="setFilter('ALL')">전체 보기</button>
+    <button class="filter-btn" id="filter-my" onclick="setFilter('내 명의')">내 명의</button>
+    <button class="filter-btn" id="filter-gift" onclick="setFilter('증여 자산')">증여 자산</button>
+  </div>
+
   <!-- 상단 자산 요약 카드 -->
   <div class="card summary-card">
     <div class="summary-item">
@@ -250,7 +297,7 @@
   <!-- 누적 자산 꺾은선 차트 -->
   <div class="card" id="chart-card">
     <div class="chart-header">
-      <h2 style="font-size: 0.95rem; margin: 0; color: var(--text-sub);">📊 전체 자산 성장 추이</h2>
+      <h2 style="font-size: 0.95rem; margin: 0; color: var(--text-sub);" id="chart-title">📊 전체 자산 성장 추이</h2>
       <div class="chart-legend">
         <div class="legend-item"><span class="legend-line legend-dashed"></span>매입가</div>
         <div class="legend-item"><span class="legend-line"></span>평가액</div>
@@ -267,6 +314,14 @@
     <div class="form-group">
       <label for="record-date">기준 일자</label>
       <input type="date" id="record-date">
+    </div>
+
+    <div class="form-group">
+      <label for="asset-memo">자산 구분 (명의)</label>
+      <select id="asset-memo">
+        <option value="내 명의">내 명의</option>
+        <option value="증여 자산">증여 자산</option>
+      </select>
     </div>
 
     <div class="form-group">
@@ -308,7 +363,7 @@
     <table>
       <thead>
         <tr>
-          <th>일자</th>
+          <th>일자/구분</th>
           <th>매입가</th>
           <th>평가액</th>
           <th>수익금(률)</th>
@@ -321,17 +376,41 @@
 </div>
 
 <script>
-  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxesmn_1R_HO3yKOqhkPGFS2MICrwMzwlMGHHFJg7yDH_sb5ZH1zAcXo6GhnEUm4ipy/exec";
+  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx5LgqKAvr3_JCAvlDVGVqVBSqD3dC1oR2dFaJ1gGsIkF9ifhlrAQ4UDDNOUr25sB9M/exec";
 
   let cachedPoints = [];
   let activeHoverIndex = null;
   let localRecords = [];
+  let currentFilter = 'ALL'; // 디폴트: 전체 보기
 
   document.getElementById('record-date').valueAsDate = new Date();
 
   function formatUSD(amount) {
     const sign = amount > 0 ? '+' : '';
     return `${sign}$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  function setFilter(filterType) {
+    currentFilter = filterType;
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+
+    if (filterType === 'ALL') {
+      document.getElementById('filter-all').classList.add('active');
+      document.getElementById('chart-title').innerText = '📊 전체 자산 성장 추이';
+    } else if (filterType === '내 명의') {
+      document.getElementById('filter-my').classList.add('active');
+      document.getElementById('chart-title').innerText = '📊 내 명의 자산 추이';
+    } else if (filterType === '증여 자산') {
+      document.getElementById('filter-gift').classList.add('active');
+      document.getElementById('chart-title').innerText = '📊 증여 자산 추이';
+    }
+
+    renderRecords();
+  }
+
+  function getFilteredRecords() {
+    if (currentFilter === 'ALL') return localRecords;
+    return localRecords.filter(r => (r.memo || '내 명의') === currentFilter);
   }
 
   function calculate() {
@@ -369,7 +448,8 @@
         buy: Number(r.buy),
         evalVal: Number(r.evalVal),
         profit: Number(r.profit),
-        rate: Number(r.rate)
+        rate: Number(r.rate),
+        memo: r.memo || "내 명의"
       }));
 
       localRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -401,6 +481,7 @@
   function saveRecord() {
     const editId = document.getElementById('edit-id').value;
     const date = document.getElementById('record-date').value;
+    const memo = document.getElementById('asset-memo').value;
     const buy = parseFloat(document.getElementById('total-buy').value);
     const evalVal = parseFloat(document.getElementById('total-eval').value);
 
@@ -412,11 +493,11 @@
     const { profit, rate } = calculate();
 
     if (editId) {
-      localRecords = localRecords.map(r => r.id === parseInt(editId) ? { id: parseInt(editId), date, buy, evalVal, profit, rate } : r);
+      localRecords = localRecords.map(r => r.id === parseInt(editId) ? { id: parseInt(editId), date, buy, evalVal, profit, rate, memo } : r);
       document.getElementById('edit-id').value = '';
       document.getElementById('submit-btn').innerText = '기록 저장하기';
     } else {
-      localRecords.push({ id: Date.now(), date, buy, evalVal, profit, rate });
+      localRecords.push({ id: Date.now(), date, buy, evalVal, profit, rate, memo });
     }
 
     localRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -430,6 +511,7 @@
   function resetForm() {
     document.getElementById('total-buy').value = '';
     document.getElementById('total-eval').value = '';
+    document.getElementById('asset-memo').value = '내 명의';
     document.getElementById('record-date').valueAsDate = new Date();
     document.getElementById('edit-id').value = '';
     document.getElementById('submit-btn').innerText = '기록 저장하기';
@@ -442,6 +524,7 @@
 
     document.getElementById('edit-id').value = target.id;
     document.getElementById('record-date').value = target.date;
+    document.getElementById('asset-memo').value = target.memo || '내 명의';
     document.getElementById('total-buy').value = target.buy;
     document.getElementById('total-eval').value = target.evalVal;
     document.getElementById('submit-btn').innerText = '기록 수정 완료';
@@ -451,10 +534,11 @@
   }
 
   function renderRecords() {
+    const filtered = getFilteredRecords();
     const tbody = document.getElementById('record-list');
     tbody.innerHTML = '';
 
-    if (localRecords.length === 0) {
+    if (filtered.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#9aa0a6;">저장된 기록이 없습니다.</td></tr>';
       document.getElementById('summary-eval').innerText = '$0.00';
       document.getElementById('summary-rate').innerText = '0.00%';
@@ -462,17 +546,17 @@
       return;
     }
 
-    const latest = localRecords[0];
+    const latest = filtered[0];
     document.getElementById('summary-eval').innerText = `$${latest.evalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const rateSign = latest.rate > 0 ? '+' : '';
     document.getElementById('summary-rate').innerText = `${rateSign}${latest.rate.toFixed(2)}%`;
 
-    localRecords.forEach(item => {
+    filtered.forEach(item => {
       const sign = item.profit > 0 ? '+' : '';
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${String(item.date).slice(2)}</td>
+        <td>${String(item.date).slice(2)}<br><span class="badge">${item.memo || '내 명의'}</span></td>
         <td>$${item.buy.toLocaleString()}</td>
         <td>$${item.evalVal.toLocaleString()}</td>
         <td>${formatUSD(item.profit)}<br>(${sign}${item.rate.toFixed(2)}%)</td>
@@ -484,7 +568,7 @@
       tbody.appendChild(tr);
     });
 
-    drawChart(localRecords);
+    drawChart(filtered);
   }
 
   function deleteRecord(id) {
@@ -534,7 +618,7 @@
         : padding + (i * (usableWidth / (chartData.length - 1)));
       const yEval = canvas.height - 25 - ((d.evalVal / maxVal) * usableHeight);
       const yBuy = canvas.height - 25 - ((d.buy / maxVal) * usableHeight);
-      return { x, yEval, yBuy, date: d.date, buy: d.buy, evalVal: d.evalVal, profit: d.profit };
+      return { x, yEval, yBuy, date: d.date, buy: d.buy, evalVal: d.evalVal, profit: d.profit, memo: d.memo };
     });
 
     if (cachedPoints.length > 1) {
@@ -606,12 +690,12 @@
       ctx.fillStyle = '#000000';
       ctx.fill();
 
-      const line1 = `${target.date}`;
+      const line1 = `${target.date} (${target.memo || '내 명의'})`;
       const line2 = `매입: $${target.buy.toLocaleString()}`;
       const line3 = `평가: $${target.evalVal.toLocaleString()}`;
 
       ctx.font = '11px sans-serif';
-      const boxWidth = 110;
+      const boxWidth = 120;
       const boxHeight = 50;
       
       let boxX = target.x - boxWidth / 2;
@@ -657,14 +741,14 @@
 
     if (activeHoverIndex !== closestIndex) {
       activeHoverIndex = closestIndex;
-      drawChart(localRecords);
+      drawChart(getFilteredRecords());
     }
   }
 
   function handleChartLeave() {
     if (activeHoverIndex !== null) {
       activeHoverIndex = null;
-      drawChart(localRecords);
+      drawChart(getFilteredRecords());
     }
   }
 
@@ -706,7 +790,7 @@
   }
 
   window.addEventListener('resize', () => {
-    drawChart(localRecords);
+    drawChart(getFilteredRecords());
   });
 
   fetchFromGoogleSheet();
