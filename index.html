@@ -8,13 +8,13 @@
     :root {
       --bg-color: #f8f9fa;
       --card-bg: #ffffff;
-      --primary: #5f6368; /* 메인 버튼: 은은한 연한 회색/다크그레이 톤 */
+      --primary: #5f6368;
       --primary-hover: #3c4043;
       --text-main: #202124;
       --text-sub: #5f6368;
       --border: #dadce0;
-      --buy-color: #d93025; /* 매입가: 빨간색 */
-      --eval-color: #000000; /* 평가액: 검은색 */
+      --buy-color: #d93025;
+      --eval-color: #000000;
     }
 
     body {
@@ -97,12 +97,14 @@
     }
 
     .chart-container {
+      position: relative;
       text-align: center;
     }
 
     canvas {
       width: 100%;
-      height: 140px;
+      height: 150px;
+      cursor: crosshair;
     }
 
     .form-group {
@@ -241,7 +243,7 @@
   <!-- 누적 자산 꺾은선 차트 -->
   <div class="card" id="chart-card">
     <div class="chart-header">
-      <h2 style="font-size: 0.95rem; margin: 0; color: var(--text-sub);">📊 자산 성장 추이</h2>
+      <h2 style="font-size: 0.95rem; margin: 0; color: var(--text-sub);">📊 전체 자산 성장 추이</h2>
       <div class="chart-legend">
         <div class="legend-item"><span class="legend-line legend-dashed"></span>매입가</div>
         <div class="legend-item"><span class="legend-line"></span>평가액</div>
@@ -311,6 +313,9 @@
 </div>
 
 <script>
+  let cachedPoints = []; // 마우스 호버 이벤트를 위한 포인트 전역 저장
+  let activeHoverIndex = null; // 현재 마우스가 올라간 포인트 인덱스
+
   document.getElementById('record-date').valueAsDate = new Date();
 
   function formatUSD(amount) {
@@ -333,10 +338,9 @@
 
     const profit = evalVal - buy;
     const rate = buy > 0 ? (profit / buy) * 100 : 0;
-    const sign = profit > 0 ? '+' : '';
 
     profitEl.innerText = formatUSD(profit);
-    rateEl.innerText = `${sign}${rate.toFixed(2)}%`;
+    rateEl.innerText = `${profit > 0 ? '+' : ''}${rate.toFixed(2)}%`;
 
     return { profit, rate };
   }
@@ -445,78 +449,191 @@
     const ctx = canvas.getContext('2d');
     
     canvas.width = canvas.parentElement.clientWidth;
-    canvas.height = 140;
+    canvas.height = 150;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (records.length === 0) return;
+    if (records.length === 0) {
+      cachedPoints = [];
+      return;
+    }
 
-    const chartData = [...records].reverse();
+    const fullHistory = [...records].reverse();
+    const maxPoints = 40;
+    let chartData = [];
+    if (fullHistory.length <= maxPoints) {
+      chartData = fullHistory;
+    } else {
+      const step = (fullHistory.length - 1) / (maxPoints - 1);
+      for (let i = 0; i < maxPoints; i++) {
+        const index = Math.round(i * step);
+        chartData.push(fullHistory[index]);
+      }
+    }
+
     const maxVal = Math.max(...chartData.map(d => Math.max(d.buy, d.evalVal))) * 1.15;
     
     const padding = 20;
     const usableWidth = canvas.width - (padding * 2);
-    const usableHeight = canvas.height - 35;
+    const usableHeight = canvas.height - 40;
 
-    const points = chartData.map((d, i) => {
+    cachedPoints = chartData.map((d, i) => {
       const x = chartData.length === 1 
         ? canvas.width / 2 
         : padding + (i * (usableWidth / (chartData.length - 1)));
-      const yEval = canvas.height - 20 - ((d.evalVal / maxVal) * usableHeight);
-      const yBuy = canvas.height - 20 - ((d.buy / maxVal) * usableHeight);
-      return { x, yEval, yBuy, date: d.date };
+      const yEval = canvas.height - 25 - ((d.evalVal / maxVal) * usableHeight);
+      const yBuy = canvas.height - 25 - ((d.buy / maxVal) * usableHeight);
+      return { x, yEval, yBuy, date: d.date, buy: d.buy, evalVal: d.evalVal, profit: d.profit };
     });
 
-    if (points.length > 1) {
+    // 1. 그라데이션 면적
+    if (cachedPoints.length > 1) {
       const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
       gradient.addColorStop(0, 'rgba(0, 0, 0, 0.12)');
       gradient.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
 
       ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].yEval);
-      points.forEach(p => ctx.lineTo(p.x, p.yEval));
-      ctx.lineTo(points[points.length - 1].x, canvas.height - 20);
-      ctx.lineTo(points[0].x, canvas.height - 20);
+      ctx.moveTo(cachedPoints[0].x, cachedPoints[0].yEval);
+      cachedPoints.forEach(p => ctx.lineTo(p.x, p.yEval));
+      ctx.lineTo(cachedPoints[cachedPoints.length - 1].x, canvas.height - 25);
+      ctx.lineTo(cachedPoints[0].x, canvas.height - 25);
       ctx.closePath();
       ctx.fillStyle = gradient;
       ctx.fill();
     }
 
-    // 1. 매입가(원금) 빨간색 점선
+    // 2. 매입가 빨간색 점선
     ctx.beginPath();
     ctx.setLineDash([4, 4]);
     ctx.strokeStyle = '#d93025';
     ctx.lineWidth = 1.5;
-    points.forEach((p, i) => {
+    cachedPoints.forEach((p, i) => {
       if (i === 0) ctx.moveTo(p.x, p.yBuy);
       else ctx.lineTo(p.x, p.yBuy);
     });
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // 2. 평가금액 검은색 실선
+    // 3. 평가액 검은색 실선
     ctx.beginPath();
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2.5;
-    points.forEach((p, i) => {
+    cachedPoints.forEach((p, i) => {
       if (i === 0) ctx.moveTo(p.x, p.yEval);
       else ctx.lineTo(p.x, p.yEval);
     });
     ctx.stroke();
 
-    // 3. 데이터 포인트 및 날짜 라벨
-    points.forEach(p => {
+    // 4. 날짜 라벨
+    const labelInterval = Math.max(1, Math.floor((cachedPoints.length - 1) / 3));
+    cachedPoints.forEach((p, index) => {
+      const isFirst = index === 0;
+      const isLast = index === cachedPoints.length - 1;
+      const isMiddle = !isFirst && !isLast && (index % labelInterval === 0);
+
+      if (isFirst || isLast || isMiddle) {
+        ctx.fillStyle = '#5f6368';
+        ctx.font = '10px sans-serif';
+        if (isFirst) ctx.textAlign = 'left';
+        else if (isLast) ctx.textAlign = 'right';
+        else ctx.textAlign = 'center';
+
+        ctx.fillText(p.date.slice(2), p.x, canvas.height - 8);
+      }
+    });
+
+    // 5. 마우스 호버/터치 강조 및 툴팁 렌더링
+    if (activeHoverIndex !== null && cachedPoints[activeHoverIndex]) {
+      const target = cachedPoints[activeHoverIndex];
+
+      // 세로 가이드선
       ctx.beginPath();
-      ctx.arc(p.x, p.yEval, 3.5, 0, Math.PI * 2);
+      ctx.strokeStyle = '#9aa0a6';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      ctx.moveTo(target.x, 0);
+      ctx.lineTo(target.x, canvas.height - 25);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 포인트 강조
+      ctx.beginPath();
+      ctx.arc(target.x, target.yEval, 5, 0, Math.PI * 2);
       ctx.fillStyle = '#000000';
       ctx.fill();
 
-      ctx.fillStyle = '#5f6368';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(p.date.slice(5), p.x, canvas.height - 5);
-    });
+      // 툴팁 박스 그리기
+      const line1 = `${target.date}`;
+      const line2 = `매입: $${target.buy.toLocaleString()}`;
+      const line3 = `평가: $${target.evalVal.toLocaleString()}`;
+
+      ctx.font = '11px sans-serif';
+      const boxWidth = 110;
+      const boxHeight = 50;
+      
+      let boxX = target.x - boxWidth / 2;
+      if (boxX < 5) boxX = 5;
+      if (boxX + boxWidth > canvas.width - 5) boxX = canvas.width - boxWidth - 5;
+      
+      let boxY = target.yEval - boxHeight - 10;
+      if (boxY < 5) boxY = target.yEval + 10;
+
+      ctx.fillStyle = 'rgba(32, 33, 36, 0.85)';
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 6);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'left';
+      ctx.fillText(line1, boxX + 8, boxY + 15);
+      ctx.fillStyle = '#ff8a80'; // 툴팁 내 매입가 색상
+      ctx.fillText(line2, boxX + 8, boxY + 30);
+      ctx.fillStyle = '#81c784'; // 툴팁 내 평가액 색상
+      ctx.fillText(line3, boxX + 8, boxY + 43);
+    }
   }
+
+  // 차트 마우스/터치 이벤트 등록
+  const canvas = document.getElementById('assetChart');
+
+  function handleChartHover(e) {
+    if (cachedPoints.length === 0) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const mouseX = clientX - rect.left;
+
+    // 가장 가까운 포인트 검색
+    let closestIndex = 0;
+    let minDiff = Math.abs(mouseX - cachedPoints[0].x);
+
+    for (let i = 1; i < cachedPoints.length; i++) {
+      const diff = Math.abs(mouseX - cachedPoints[i].x);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIndex = i;
+      }
+    }
+
+    if (activeHoverIndex !== closestIndex) {
+      activeHoverIndex = closestIndex;
+      const records = JSON.parse(localStorage.getItem('asset_records') || '[]');
+      drawChart(records);
+    }
+  }
+
+  function handleChartLeave() {
+    if (activeHoverIndex !== null) {
+      activeHoverIndex = null;
+      const records = JSON.parse(localStorage.getItem('asset_records') || '[]');
+      drawChart(records);
+    }
+  }
+
+  canvas.addEventListener('mousemove', handleChartHover);
+  canvas.addEventListener('mouseleave', handleChartLeave);
+  canvas.addEventListener('touchstart', handleChartHover, { passive: true });
+  canvas.addEventListener('touchend', handleChartLeave);
 
   function exportData() {
     const records = localStorage.getItem('asset_records') || '[]';
