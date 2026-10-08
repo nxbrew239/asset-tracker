@@ -8,12 +8,13 @@
     :root {
       --bg-color: #f8f9fa;
       --card-bg: #ffffff;
-      --primary: #1a73e8;
+      --primary: #5f6368; /* 메인 버튼: 은은한 연한 회색/다크그레이 톤 */
+      --primary-hover: #3c4043;
       --text-main: #202124;
       --text-sub: #5f6368;
       --border: #dadce0;
-      --plus-color: #d93025;
-      --minus-color: #1a73e8;
+      --buy-color: #d93025; /* 매입가: 빨간색 */
+      --eval-color: #000000; /* 평가액: 검은색 */
     }
 
     body {
@@ -45,8 +46,8 @@
     }
 
     .summary-card {
-      background: #e8f0fe;
-      border: 1px solid #aecbfa;
+      background: #f1f3f4;
+      border: 1px solid var(--border);
       display: flex;
       justify-content: space-around;
       text-align: center;
@@ -60,6 +61,48 @@
 
     .summary-item strong {
       font-size: 1.2rem;
+      color: #000000;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .chart-legend {
+      font-size: 0.75rem;
+      display: flex;
+      gap: 12px;
+      color: var(--text-sub);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .legend-line {
+      width: 12px;
+      height: 2px;
+      background: var(--eval-color);
+      display: inline-block;
+    }
+
+    .legend-dashed {
+      border-top: 2px dashed var(--buy-color);
+      background: none !important;
+    }
+
+    .chart-container {
+      text-align: center;
+    }
+
+    canvas {
+      width: 100%;
+      height: 140px;
     }
 
     .form-group {
@@ -117,29 +160,28 @@
       font-weight: bold;
       cursor: pointer;
       margin-top: 10px;
+      transition: background-color 0.2s;
     }
 
     button:hover {
-      background-color: #1557b0;
+      background-color: var(--primary-hover);
     }
 
     .btn-secondary {
-      background-color: #5f6368;
+      background-color: #80868b;
       font-size: 0.85rem;
-      padding: 8px 12px;
+      padding: 6px 10px;
       width: auto;
       margin-top: 0;
     }
 
     .btn-secondary:hover {
-      background-color: #3c4043;
+      background-color: #5f6368;
     }
 
     .backup-actions {
       display: flex;
-      gap: 10px;
-      justify-content: flex-end;
-      margin-bottom: 10px;
+      gap: 6px;
     }
 
     table {
@@ -149,10 +191,10 @@
     }
 
     th, td {
-      padding: 10px;
+      padding: 10px 4px;
       text-align: right;
       border-bottom: 1px solid var(--border);
-      font-size: 0.9rem;
+      font-size: 0.85rem;
     }
 
     th {
@@ -165,24 +207,18 @@
       text-align: left;
     }
 
-    .plus { color: var(--plus-color); font-weight: bold; }
-    .minus { color: var(--minus-color); font-weight: bold; }
-
-    .btn-delete {
+    .btn-action {
       background: none;
       border: none;
-      color: #9aa0a6;
       cursor: pointer;
-      font-size: 0.8rem;
-      padding: 2px 6px;
-      width: auto;
-      margin: 0;
+      font-size: 0.85rem;
+      padding: 2px 4px;
     }
 
-    .btn-delete:hover {
-      color: var(--plus-color);
-      background: none;
-    }
+    .btn-edit { color: #5f6368; }
+    .btn-edit:hover { color: #202124; }
+    .btn-delete { color: #9aa0a6; }
+    .btn-delete:hover { color: #d93025; }
   </style>
 </head>
 <body>
@@ -202,7 +238,23 @@
     </div>
   </div>
 
+  <!-- 누적 자산 꺾은선 차트 -->
+  <div class="card" id="chart-card">
+    <div class="chart-header">
+      <h2 style="font-size: 0.95rem; margin: 0; color: var(--text-sub);">📊 자산 성장 추이</h2>
+      <div class="chart-legend">
+        <div class="legend-item"><span class="legend-line legend-dashed"></span>매입가</div>
+        <div class="legend-item"><span class="legend-line"></span>평가액</div>
+      </div>
+    </div>
+    <div class="chart-container">
+      <canvas id="assetChart"></canvas>
+    </div>
+  </div>
+
+  <!-- 입력 폼 -->
   <div class="card">
+    <input type="hidden" id="edit-id" value="">
     <div class="form-group">
       <label for="record-date">기준 일자</label>
       <input type="date" id="record-date">
@@ -229,14 +281,15 @@
       </div>
     </div>
 
-    <button onclick="saveRecord()">기록 저장하기</button>
+    <button id="submit-btn" onclick="saveRecord()">기록 저장하기</button>
   </div>
 
+  <!-- 기록 목록 -->
   <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-      <h2 style="font-size: 1.1rem; margin: 0;">📋 저장된 일자별 기록</h2>
+      <h2 style="font-size: 1.05rem; margin: 0;">📋 저장된 기록</h2>
       <div class="backup-actions">
-        <button class="btn-secondary" onclick="exportData()">백업 다운로드</button>
+        <button class="btn-secondary" onclick="exportData()">백업</button>
         <button class="btn-secondary" onclick="document.getElementById('import-file').click()">복구</button>
         <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importData(event)">
       </div>
@@ -249,7 +302,7 @@
           <th>매입가</th>
           <th>평가액</th>
           <th>수익금(률)</th>
-          <th>삭제</th>
+          <th style="text-align: center;">관리</th>
         </tr>
       </thead>
       <tbody id="record-list"></tbody>
@@ -275,26 +328,21 @@
     if (buy <= 0 && evalVal <= 0) {
       profitEl.innerText = '-';
       rateEl.innerText = '-';
-      profitEl.className = '';
-      rateEl.className = '';
       return { profit: 0, rate: 0 };
     }
 
     const profit = evalVal - buy;
     const rate = buy > 0 ? (profit / buy) * 100 : 0;
-    const classType = profit > 0 ? 'plus' : profit < 0 ? 'minus' : '';
     const sign = profit > 0 ? '+' : '';
 
     profitEl.innerText = formatUSD(profit);
     rateEl.innerText = `${sign}${rate.toFixed(2)}%`;
 
-    profitEl.className = classType;
-    rateEl.className = classType;
-
     return { profit, rate };
   }
 
   function saveRecord() {
+    const editId = document.getElementById('edit-id').value;
     const date = document.getElementById('record-date').value;
     const buy = parseFloat(document.getElementById('total-buy').value);
     const evalVal = parseFloat(document.getElementById('total-eval').value);
@@ -305,18 +353,45 @@
     }
 
     const { profit, rate } = calculate();
-    const newRecord = { id: Date.now(), date, buy, evalVal, profit, rate };
+    let records = JSON.parse(localStorage.getItem('asset_records') || '[]');
 
-    const records = JSON.parse(localStorage.getItem('asset_records') || '[]');
-    records.push(newRecord);
+    if (editId) {
+      records = records.map(r => r.id === parseInt(editId) ? { id: parseInt(editId), date, buy, evalVal, profit, rate } : r);
+      document.getElementById('edit-id').value = '';
+      document.getElementById('submit-btn').innerText = '기록 저장하기';
+    } else {
+      records.push({ id: Date.now(), date, buy, evalVal, profit, rate });
+    }
+
     records.sort((a, b) => new Date(b.date) - new Date(a.date));
-
     localStorage.setItem('asset_records', JSON.stringify(records));
 
+    resetForm();
+    renderRecords();
+  }
+
+  function resetForm() {
     document.getElementById('total-buy').value = '';
     document.getElementById('total-eval').value = '';
+    document.getElementById('record-date').valueAsDate = new Date();
+    document.getElementById('edit-id').value = '';
+    document.getElementById('submit-btn').innerText = '기록 저장하기';
     calculate();
-    renderRecords();
+  }
+
+  function editRecord(id) {
+    const records = JSON.parse(localStorage.getItem('asset_records') || '[]');
+    const target = records.find(r => r.id === id);
+    if (!target) return;
+
+    document.getElementById('edit-id').value = target.id;
+    document.getElementById('record-date').value = target.date;
+    document.getElementById('total-buy').value = target.buy;
+    document.getElementById('total-eval').value = target.evalVal;
+    document.getElementById('submit-btn').innerText = '기록 수정 완료';
+
+    calculate();
+    window.scrollTo({ top: 150, behavior: 'smooth' });
   }
 
   function renderRecords() {
@@ -328,42 +403,121 @@
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#9aa0a6;">저장된 기록이 없습니다.</td></tr>';
       document.getElementById('summary-eval').innerText = '$0.00';
       document.getElementById('summary-rate').innerText = '0.00%';
-      document.getElementById('summary-rate').className = '';
+      drawChart([]);
       return;
     }
 
-    // 상단 요약 카드 업데이트 (가장 최신 날짜 기준)
     const latest = records[0];
     document.getElementById('summary-eval').innerText = `$${latest.evalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const rateSign = latest.rate > 0 ? '+' : '';
-    const summaryRateEl = document.getElementById('summary-rate');
-    summaryRateEl.innerText = `${rateSign}${latest.rate.toFixed(2)}%`;
-    summaryRateEl.className = latest.profit > 0 ? 'plus' : latest.profit < 0 ? 'minus' : '';
+    document.getElementById('summary-rate').innerText = `${rateSign}${latest.rate.toFixed(2)}%`;
 
     records.forEach(item => {
-      const classType = item.profit > 0 ? 'plus' : item.profit < 0 ? 'minus' : '';
       const sign = item.profit > 0 ? '+' : '';
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${item.date}</td>
-        <td>$${item.buy.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td>$${item.evalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td class="${classType}">${formatUSD(item.profit)}<br>(${sign}${item.rate.toFixed(2)}%)</td>
-        <td><button class="btn-delete" onclick="deleteRecord(${item.id})">✕</button></td>
+        <td>${item.date.slice(2)}</td>
+        <td>$${item.buy.toLocaleString()}</td>
+        <td>$${item.evalVal.toLocaleString()}</td>
+        <td>${formatUSD(item.profit)}<br>(${sign}${item.rate.toFixed(2)}%)</td>
+        <td style="text-align: center;">
+          <button class="btn-action btn-edit" onclick="editRecord(${item.id})">✏️</button>
+          <button class="btn-action btn-delete" onclick="deleteRecord(${item.id})">✕</button>
+        </td>
       `;
       tbody.appendChild(tr);
     });
+
+    drawChart(records);
   }
 
   function deleteRecord(id) {
+    if (!confirm('해당 기록을 삭제하시겠습니까?')) return;
     let records = JSON.parse(localStorage.getItem('asset_records') || '[]');
     records = records.filter(r => r.id !== id);
     localStorage.setItem('asset_records', JSON.stringify(records));
     renderRecords();
   }
 
-  // 데이터 백업 (JSON 파일 다운로드)
+  function drawChart(records) {
+    const canvas = document.getElementById('assetChart');
+    const ctx = canvas.getContext('2d');
+    
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = 140;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (records.length === 0) return;
+
+    const chartData = [...records].reverse();
+    const maxVal = Math.max(...chartData.map(d => Math.max(d.buy, d.evalVal))) * 1.15;
+    
+    const padding = 20;
+    const usableWidth = canvas.width - (padding * 2);
+    const usableHeight = canvas.height - 35;
+
+    const points = chartData.map((d, i) => {
+      const x = chartData.length === 1 
+        ? canvas.width / 2 
+        : padding + (i * (usableWidth / (chartData.length - 1)));
+      const yEval = canvas.height - 20 - ((d.evalVal / maxVal) * usableHeight);
+      const yBuy = canvas.height - 20 - ((d.buy / maxVal) * usableHeight);
+      return { x, yEval, yBuy, date: d.date };
+    });
+
+    if (points.length > 1) {
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 0.12)');
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
+
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].yEval);
+      points.forEach(p => ctx.lineTo(p.x, p.yEval));
+      ctx.lineTo(points[points.length - 1].x, canvas.height - 20);
+      ctx.lineTo(points[0].x, canvas.height - 20);
+      ctx.closePath();
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
+
+    // 1. 매입가(원금) 빨간색 점선
+    ctx.beginPath();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = '#d93025';
+    ctx.lineWidth = 1.5;
+    points.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x, p.yBuy);
+      else ctx.lineTo(p.x, p.yBuy);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 2. 평가금액 검은색 실선
+    ctx.beginPath();
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2.5;
+    points.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x, p.yEval);
+      else ctx.lineTo(p.x, p.yEval);
+    });
+    ctx.stroke();
+
+    // 3. 데이터 포인트 및 날짜 라벨
+    points.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.yEval, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#000000';
+      ctx.fill();
+
+      ctx.fillStyle = '#5f6368';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(p.date.slice(5), p.x, canvas.height - 5);
+    });
+  }
+
   function exportData() {
     const records = localStorage.getItem('asset_records') || '[]';
     const blob = new Blob([records], { type: 'application/json' });
@@ -375,7 +529,6 @@
     URL.revokeObjectURL(url);
   }
 
-  // 데이터 복구 (JSON 파일 불러오기)
   function importData(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -383,20 +536,23 @@
     const reader = new FileReader();
     reader.onload = function(e) {
       try {
-        const importedRecords = JSON.parse(e.target.result);
-        if (Array.isArray(importedRecords)) {
-          localStorage.setItem('asset_records', JSON.stringify(importedRecords));
+        const imported = JSON.parse(e.target.result);
+        if (Array.isArray(imported)) {
+          localStorage.setItem('asset_records', JSON.stringify(imported));
           renderRecords();
-          alert('데이터 복구가 완료되었습니다!');
-        } else {
-          alert('올바르지 않은 데이터 형식입니다.');
+          alert('데이터 복구 완료!');
         }
       } catch (err) {
-        alert('파일을 읽는 중 오류가 발생했습니다.');
+        alert('올바르지 않은 백업 파일입니다.');
       }
     };
     reader.readAsText(file);
   }
+
+  window.addEventListener('resize', () => {
+    const records = JSON.parse(localStorage.getItem('asset_records') || '[]');
+    drawChart(records);
+  });
 
   renderRecords();
 </script>
