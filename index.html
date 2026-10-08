@@ -36,7 +36,6 @@
       text-align: center;
     }
 
-    /* 필터 버튼 스타일 */
     .filter-container {
       display: flex;
       justify-content: center;
@@ -381,7 +380,7 @@
   let cachedPoints = [];
   let activeHoverIndex = null;
   let localRecords = [];
-  let currentFilter = 'ALL'; // 디폴트: 전체 보기
+  let currentFilter = 'ALL';
 
   document.getElementById('record-date').valueAsDate = new Date();
 
@@ -408,9 +407,75 @@
     renderRecords();
   }
 
+  // 필터링 및 누적 합산 스냅샷 로직
   function getFilteredRecords() {
-    if (currentFilter === 'ALL') return localRecords;
-    return localRecords.filter(r => (r.memo || '내 명의') === currentFilter);
+    if (currentFilter !== 'ALL') {
+      const filtered = localRecords.filter(r => (r.memo || '내 명의') === currentFilter);
+      filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+      return filtered;
+    }
+
+    if (localRecords.length === 0) return [];
+
+    // 1. 존재하는 모든 일자 추출 (오름차순 정렬)
+    const allDates = Array.from(new Set(localRecords.map(r => r.date))).sort((a, b) => new Date(a) - new Date(b));
+
+    // 2. 각 일자별 시점에서의 각 명의별 최신 가치를 상태 유지하며 누적 합산
+    let latestValues = {};
+    const aggregated = [];
+
+    allDates.forEach(dateKey => {
+      const dayRecords = localRecords.filter(r => r.date === dateKey);
+      dayRecords.forEach(r => {
+        const cat = r.memo || '내 명의';
+        latestValues[cat] = {
+          buy: Number(r.buy) || 0,
+          evalVal: Number(r.evalVal) || 0
+        };
+      });
+
+      let totalBuy = 0;
+      let totalEval = 0;
+      Object.values(latestValues).forEach(val => {
+        totalBuy += val.buy;
+        totalEval += val.evalVal;
+      });
+
+      const profit = totalEval - totalBuy;
+      const rate = totalBuy > 0 ? (profit / totalBuy) * 100 : 0;
+
+      aggregated.push({
+        id: dateKey,
+        date: dateKey,
+        buy: totalBuy,
+        evalVal: totalEval,
+        profit: profit,
+        rate: rate,
+        memo: '전체 통합'
+      });
+    });
+
+    // 최신 날짜순 정렬 (내림차순)
+    aggregated.sort((a, b) => new Date(b.date) - new Date(a.date));
+    return aggregated;
+  }
+
+  function updateSummaryCard() {
+    const displayRecords = getFilteredRecords();
+
+    if (displayRecords.length === 0) {
+      document.getElementById('summary-eval').innerText = '$0.00';
+      document.getElementById('summary-rate').innerText = '0.00%';
+      return;
+    }
+
+    const latest = displayRecords[0];
+    const latestEval = latest.evalVal;
+    const latestRate = latest.rate;
+    const rateSign = latestRate > 0 ? '+' : '';
+
+    document.getElementById('summary-eval').innerText = `$${latestEval.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    document.getElementById('summary-rate').innerText = `${rateSign}${latestRate.toFixed(2)}%`;
   }
 
   function calculate() {
@@ -534,41 +599,50 @@
   }
 
   function renderRecords() {
-    const filtered = getFilteredRecords();
+    updateSummaryCard();
+
+    const displayRecords = getFilteredRecords();
     const tbody = document.getElementById('record-list');
     tbody.innerHTML = '';
 
-    if (filtered.length === 0) {
+    if (displayRecords.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#9aa0a6;">저장된 기록이 없습니다.</td></tr>';
-      document.getElementById('summary-eval').innerText = '$0.00';
-      document.getElementById('summary-rate').innerText = '0.00%';
       drawChart([]);
       return;
     }
 
-    const latest = filtered[0];
-    document.getElementById('summary-eval').innerText = `$${latest.evalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    const rateSign = latest.rate > 0 ? '+' : '';
-    document.getElementById('summary-rate').innerText = `${rateSign}${latest.rate.toFixed(2)}%`;
+    if (currentFilter === 'ALL') {
+      displayRecords.forEach(item => {
+        const sign = item.profit > 0 ? '+' : '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${String(item.date).slice(2)}<br><span class="badge" style="background:#d9dce0; color:#202124;">통합</span></td>
+          <td>$${item.buy.toLocaleString()}</td>
+          <td>$${item.evalVal.toLocaleString()}</td>
+          <td>${formatUSD(item.profit)}<br>(${sign}${item.rate.toFixed(2)}%)</td>
+          <td style="text-align: center; color:#9aa0a6; font-size:0.75rem;">개별탭 수정</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } else {
+      displayRecords.forEach(item => {
+        const sign = item.profit > 0 ? '+' : '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${String(item.date).slice(2)}<br><span class="badge">${item.memo || '내 명의'}</span></td>
+          <td>$${item.buy.toLocaleString()}</td>
+          <td>$${item.evalVal.toLocaleString()}</td>
+          <td>${formatUSD(item.profit)}<br>(${sign}${item.rate.toFixed(2)}%)</td>
+          <td style="text-align: center;">
+            <button class="btn-action btn-edit" onclick="editRecord(${item.id})">✏️</button>
+            <button class="btn-action btn-delete" onclick="deleteRecord(${item.id})">✕</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
 
-    filtered.forEach(item => {
-      const sign = item.profit > 0 ? '+' : '';
-
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${String(item.date).slice(2)}<br><span class="badge">${item.memo || '내 명의'}</span></td>
-        <td>$${item.buy.toLocaleString()}</td>
-        <td>$${item.evalVal.toLocaleString()}</td>
-        <td>${formatUSD(item.profit)}<br>(${sign}${item.rate.toFixed(2)}%)</td>
-        <td style="text-align: center;">
-          <button class="btn-action btn-edit" onclick="editRecord(${item.id})">✏️</button>
-          <button class="btn-action btn-delete" onclick="deleteRecord(${item.id})">✕</button>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    drawChart(filtered);
+    drawChart(displayRecords);
   }
 
   function deleteRecord(id) {
@@ -612,13 +686,23 @@
     const usableWidth = canvas.width - (padding * 2);
     const usableHeight = canvas.height - 40;
 
+    // 툴팁용 데이터 포인트 생성 시 합산된 d.buy 및 d.evalVal 전달
     cachedPoints = chartData.map((d, i) => {
       const x = chartData.length === 1 
         ? canvas.width / 2 
         : padding + (i * (usableWidth / (chartData.length - 1)));
       const yEval = canvas.height - 25 - ((d.evalVal / maxVal) * usableHeight);
       const yBuy = canvas.height - 25 - ((d.buy / maxVal) * usableHeight);
-      return { x, yEval, yBuy, date: d.date, buy: d.buy, evalVal: d.evalVal, profit: d.profit, memo: d.memo };
+      return { 
+        x, 
+        yEval, 
+        yBuy, 
+        date: d.date, 
+        buy: d.buy, 
+        evalVal: d.evalVal, 
+        profit: d.profit, 
+        memo: currentFilter === 'ALL' ? '전체 통합' : (d.memo || '내 명의')
+      };
     });
 
     if (cachedPoints.length > 1) {
@@ -673,6 +757,7 @@
       }
     });
 
+    // 툴팁 렌더링
     if (activeHoverIndex !== null && cachedPoints[activeHoverIndex]) {
       const target = cachedPoints[activeHoverIndex];
 
@@ -690,12 +775,12 @@
       ctx.fillStyle = '#000000';
       ctx.fill();
 
-      const line1 = `${target.date} (${target.memo || '내 명의'})`;
+      const line1 = `${target.date} (${target.memo})`;
       const line2 = `매입: $${target.buy.toLocaleString()}`;
       const line3 = `평가: $${target.evalVal.toLocaleString()}`;
 
       ctx.font = '11px sans-serif';
-      const boxWidth = 120;
+      const boxWidth = 135;
       const boxHeight = 50;
       
       let boxX = target.x - boxWidth / 2;
