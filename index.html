@@ -12,8 +12,8 @@
       --text-main: #202124;
       --text-sub: #5f6368;
       --border: #dadce0;
-      --plus-color: #d93025; /* 한국 주식 시장 기준 (상승: 빨강) */
-      --minus-color: #1a73e8; /* 한국 주식 시장 기준 (하락: 파랑) */
+      --plus-color: #d93025;
+      --minus-color: #1a73e8;
     }
 
     body {
@@ -42,6 +42,24 @@
       padding: 20px;
       margin-bottom: 20px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .summary-card {
+      background: #e8f0fe;
+      border: 1px solid #aecbfa;
+      display: flex;
+      justify-content: space-around;
+      text-align: center;
+    }
+
+    .summary-item span {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-sub);
+    }
+
+    .summary-item strong {
+      font-size: 1.2rem;
     }
 
     .form-group {
@@ -105,6 +123,25 @@
       background-color: #1557b0;
     }
 
+    .btn-secondary {
+      background-color: #5f6368;
+      font-size: 0.85rem;
+      padding: 8px 12px;
+      width: auto;
+      margin-top: 0;
+    }
+
+    .btn-secondary:hover {
+      background-color: #3c4043;
+    }
+
+    .backup-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-bottom: 10px;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -151,7 +188,19 @@
 <body>
 
 <div class="container">
-  <h1>📈 일자별 자산 기록기</h1>
+  <h1>📈 일자별 자산 기록기 ($)</h1>
+
+  <!-- 상단 자산 요약 카드 -->
+  <div class="card summary-card">
+    <div class="summary-item">
+      <span>최신 총 평가액</span>
+      <strong id="summary-eval">$0.00</strong>
+    </div>
+    <div class="summary-item">
+      <span>최신 누적 수익률</span>
+      <strong id="summary-rate">0.00%</strong>
+    </div>
+  </div>
 
   <div class="card">
     <div class="form-group">
@@ -160,13 +209,13 @@
     </div>
 
     <div class="form-group">
-      <label for="total-buy">총매입가격 (달러)</label>
-      <input type="number" id="total-buy" placeholder="예: 10000000" oninput="calculate()">
+      <label for="total-buy">총매입가격 ($)</label>
+      <input type="number" id="total-buy" step="0.01" placeholder="예: 10000" oninput="calculate()">
     </div>
 
     <div class="form-group">
-      <label for="total-eval">총평가금액 (달러)</label>
-      <input type="number" id="total-eval" placeholder="예: 11500000" oninput="calculate()">
+      <label for="total-eval">총평가금액 ($)</label>
+      <input type="number" id="total-eval" step="0.01" placeholder="예: 11500" oninput="calculate()">
     </div>
 
     <div class="calc-preview">
@@ -184,7 +233,15 @@
   </div>
 
   <div class="card">
-    <h2 style="font-size: 1.1rem; margin-top: 0;">📋 저장된 일자별 기록</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <h2 style="font-size: 1.1rem; margin: 0;">📋 저장된 일자별 기록</h2>
+      <div class="backup-actions">
+        <button class="btn-secondary" onclick="exportData()">백업 다운로드</button>
+        <button class="btn-secondary" onclick="document.getElementById('import-file').click()">복구</button>
+        <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importData(event)">
+      </div>
+    </div>
+
     <table>
       <thead>
         <tr>
@@ -195,18 +252,19 @@
           <th>삭제</th>
         </tr>
       </thead>
-      <tbody id="record-list">
-        <!-- JS 저장 기록이 나타나는 부분 -->
-      </tbody>
+      <tbody id="record-list"></tbody>
     </table>
   </div>
 </div>
 
 <script>
-  // 오늘 날짜 기본 세팅
   document.getElementById('record-date').valueAsDate = new Date();
 
-  // 자동 계산 함수
+  function formatUSD(amount) {
+    const sign = amount > 0 ? '+' : '';
+    return `${sign}$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
   function calculate() {
     const buy = parseFloat(document.getElementById('total-buy').value) || 0;
     const evalVal = parseFloat(document.getElementById('total-eval').value) || 0;
@@ -224,12 +282,10 @@
 
     const profit = evalVal - buy;
     const rate = buy > 0 ? (profit / buy) * 100 : 0;
-
-    // 화면 반영 및 색상 설정
     const classType = profit > 0 ? 'plus' : profit < 0 ? 'minus' : '';
     const sign = profit > 0 ? '+' : '';
 
-    profitEl.innerText = `${sign}${profit.toLocaleString()}원`;
+    profitEl.innerText = formatUSD(profit);
     rateEl.innerText = `${sign}${rate.toFixed(2)}%`;
 
     profitEl.className = classType;
@@ -238,7 +294,6 @@
     return { profit, rate };
   }
 
-  // 데이터 로컬스토리지 저장 함수
   function saveRecord() {
     const date = document.getElementById('record-date').value;
     const buy = parseFloat(document.getElementById('total-buy').value);
@@ -250,27 +305,20 @@
     }
 
     const { profit, rate } = calculate();
-
     const newRecord = { id: Date.now(), date, buy, evalVal, profit, rate };
 
-    // 기존 기록 가져오기
     const records = JSON.parse(localStorage.getItem('asset_records') || '[]');
     records.push(newRecord);
-
-    // 날짜 내림차순 정렬
     records.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // 로컬스토리지에 저장
     localStorage.setItem('asset_records', JSON.stringify(records));
 
-    // 입력 필드 초기화 및 리스트 갱신
     document.getElementById('total-buy').value = '';
     document.getElementById('total-eval').value = '';
     calculate();
     renderRecords();
   }
 
-  // 기록 불러오기 및 렌더링
   function renderRecords() {
     const records = JSON.parse(localStorage.getItem('asset_records') || '[]');
     const tbody = document.getElementById('record-list');
@@ -278,8 +326,19 @@
 
     if (records.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#9aa0a6;">저장된 기록이 없습니다.</td></tr>';
+      document.getElementById('summary-eval').innerText = '$0.00';
+      document.getElementById('summary-rate').innerText = '0.00%';
+      document.getElementById('summary-rate').className = '';
       return;
     }
+
+    // 상단 요약 카드 업데이트 (가장 최신 날짜 기준)
+    const latest = records[0];
+    document.getElementById('summary-eval').innerText = `$${latest.evalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const rateSign = latest.rate > 0 ? '+' : '';
+    const summaryRateEl = document.getElementById('summary-rate');
+    summaryRateEl.innerText = `${rateSign}${latest.rate.toFixed(2)}%`;
+    summaryRateEl.className = latest.profit > 0 ? 'plus' : latest.profit < 0 ? 'minus' : '';
 
     records.forEach(item => {
       const classType = item.profit > 0 ? 'plus' : item.profit < 0 ? 'minus' : '';
@@ -288,16 +347,15 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${item.date}</td>
-        <td>${item.buy.toLocaleString()}</td>
-        <td>${item.evalVal.toLocaleString()}</td>
-        <td class="${classType}">${sign}${item.profit.toLocaleString()}<br>(${sign}${item.rate.toFixed(2)}%)</td>
+        <td>$${item.buy.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td>$${item.evalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td class="${classType}">${formatUSD(item.profit)}<br>(${sign}${item.rate.toFixed(2)}%)</td>
         <td><button class="btn-delete" onclick="deleteRecord(${item.id})">✕</button></td>
       `;
       tbody.appendChild(tr);
     });
   }
 
-  // 삭제 함수
   function deleteRecord(id) {
     let records = JSON.parse(localStorage.getItem('asset_records') || '[]');
     records = records.filter(r => r.id !== id);
@@ -305,7 +363,41 @@
     renderRecords();
   }
 
-  // 초기 실행 시 기존 저장 데이터 불러오기
+  // 데이터 백업 (JSON 파일 다운로드)
+  function exportData() {
+    const records = localStorage.getItem('asset_records') || '[]';
+    const blob = new Blob([records], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `asset_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // 데이터 복구 (JSON 파일 불러오기)
+  function importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const importedRecords = JSON.parse(e.target.result);
+        if (Array.isArray(importedRecords)) {
+          localStorage.setItem('asset_records', JSON.stringify(importedRecords));
+          renderRecords();
+          alert('데이터 복구가 완료되었습니다!');
+        } else {
+          alert('올바르지 않은 데이터 형식입니다.');
+        }
+      } catch (err) {
+        alert('파일을 읽는 중 오류가 발생했습니다.');
+      }
+    };
+    reader.readAsText(file);
+  }
+
   renderRecords();
 </script>
 
