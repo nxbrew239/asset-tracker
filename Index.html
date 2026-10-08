@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>일자별 자산 및 수익률 기록기</title>
+  <style>
+    :root {
+      --bg-color: #f8f9fa;
+      --card-bg: #ffffff;
+      --primary: #1a73e8;
+      --text-main: #202124;
+      --text-sub: #5f6368;
+      --border: #dadce0;
+      --plus-color: #d93025; /* 한국 주식 시장 기준 (상승: 빨강) */
+      --minus-color: #1a73e8; /* 한국 주식 시장 기준 (하락: 파랑) */
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.9rem;
+      color: var(--text-sub);
+      margin-bottom: 6px;
+    }
+
+    input[type="date"],
+    input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+
+    .calc-preview {
+      background: #f1f3f4;
+      padding: 12px 15px;
+      border-radius: 6px;
+      margin-top: 15px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .calc-item {
+      text-align: center;
+    }
+
+    .calc-item span {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--text-sub);
+    }
+
+    .calc-item strong {
+      font-size: 1.1rem;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      background-color: #1557b0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      padding: 10px;
+      text-align: right;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    th {
+      background-color: #f1f3f4;
+      color: var(--text-sub);
+      font-weight: 600;
+    }
+
+    th:first-child, td:first-child {
+      text-align: left;
+    }
+
+    .plus { color: var(--plus-color); font-weight: bold; }
+    .minus { color: var(--minus-color); font-weight: bold; }
+
+    .btn-delete {
+      background: none;
+      border: none;
+      color: #9aa0a6;
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 2px 6px;
+      width: auto;
+      margin: 0;
+    }
+
+    .btn-delete:hover {
+      color: var(--plus-color);
+      background: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>📈 일자별 자산 기록기</h1>
+
+  <div class="card">
+    <div class="form-group">
+      <label for="record-date">기준 일자</label>
+      <input type="date" id="record-date">
+    </div>
+
+    <div class="form-group">
+      <label for="total-buy">총매입가격 (달러)</label>
+      <input type="number" id="total-buy" placeholder="예: 10000000" oninput="calculate()">
+    </div>
+
+    <div class="form-group">
+      <label for="total-eval">총평가금액 (달러)</label>
+      <input type="number" id="total-eval" placeholder="예: 11500000" oninput="calculate()">
+    </div>
+
+    <div class="calc-preview">
+      <div class="calc-item">
+        <span>자동 계산 수익금</span>
+        <strong id="preview-profit">-</strong>
+      </div>
+      <div class="calc-item">
+        <span>자동 계산 수익률</span>
+        <strong id="preview-rate">-</strong>
+      </div>
+    </div>
+
+    <button onclick="saveRecord()">기록 저장하기</button>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size: 1.1rem; margin-top: 0;">📋 저장된 일자별 기록</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>일자</th>
+          <th>매입가</th>
+          <th>평가액</th>
+          <th>수익금(률)</th>
+          <th>삭제</th>
+        </tr>
+      </thead>
+      <tbody id="record-list">
+        <!-- JS 저장 기록이 나타나는 부분 -->
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  // 오늘 날짜 기본 세팅
+  document.getElementById('record-date').valueAsDate = new Date();
+
+  // 자동 계산 함수
+  function calculate() {
+    const buy = parseFloat(document.getElementById('total-buy').value) || 0;
+    const evalVal = parseFloat(document.getElementById('total-eval').value) || 0;
+
+    const profitEl = document.getElementById('preview-profit');
+    const rateEl = document.getElementById('preview-rate');
+
+    if (buy <= 0 && evalVal <= 0) {
+      profitEl.innerText = '-';
+      rateEl.innerText = '-';
+      profitEl.className = '';
+      rateEl.className = '';
+      return { profit: 0, rate: 0 };
+    }
+
+    const profit = evalVal - buy;
+    const rate = buy > 0 ? (profit / buy) * 100 : 0;
+
+    // 화면 반영 및 색상 설정
+    const classType = profit > 0 ? 'plus' : profit < 0 ? 'minus' : '';
+    const sign = profit > 0 ? '+' : '';
+
+    profitEl.innerText = `${sign}${profit.toLocaleString()}원`;
+    rateEl.innerText = `${sign}${rate.toFixed(2)}%`;
+
+    profitEl.className = classType;
+    rateEl.className = classType;
+
+    return { profit, rate };
+  }
+
+  // 데이터 로컬스토리지 저장 함수
+  function saveRecord() {
+    const date = document.getElementById('record-date').value;
+    const buy = parseFloat(document.getElementById('total-buy').value);
+    const evalVal = parseFloat(document.getElementById('total-eval').value);
+
+    if (!date || isNaN(buy) || isNaN(evalVal)) {
+      alert('일자, 총매입가, 총평가액을 정확히 입력해주세요.');
+      return;
+    }
+
+    const { profit, rate } = calculate();
+
+    const newRecord = { id: Date.now(), date, buy, evalVal, profit, rate };
+
+    // 기존 기록 가져오기
+    const records = JSON.parse(localStorage.getItem('asset_records') || '[]');
+    records.push(newRecord);
+
+    // 날짜 내림차순 정렬
+    records.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // 로컬스토리지에 저장
+    localStorage.setItem('asset_records', JSON.stringify(records));
+
+    // 입력 필드 초기화 및 리스트 갱신
+    document.getElementById('total-buy').value = '';
+    document.getElementById('total-eval').value = '';
+    calculate();
+    renderRecords();
+  }
+
+  // 기록 불러오기 및 렌더링
+  function renderRecords() {
+    const records = JSON.parse(localStorage.getItem('asset_records') || '[]');
+    const tbody = document.getElementById('record-list');
+    tbody.innerHTML = '';
+
+    if (records.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#9aa0a6;">저장된 기록이 없습니다.</td></tr>';
+      return;
+    }
+
+    records.forEach(item => {
+      const classType = item.profit > 0 ? 'plus' : item.profit < 0 ? 'minus' : '';
+      const sign = item.profit > 0 ? '+' : '';
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${item.date}</td>
+        <td>${item.buy.toLocaleString()}</td>
+        <td>${item.evalVal.toLocaleString()}</td>
+        <td class="${classType}">${sign}${item.profit.toLocaleString()}<br>(${sign}${item.rate.toFixed(2)}%)</td>
+        <td><button class="btn-delete" onclick="deleteRecord(${item.id})">✕</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // 삭제 함수
+  function deleteRecord(id) {
+    let records = JSON.parse(localStorage.getItem('asset_records') || '[]');
+    records = records.filter(r => r.id !== id);
+    localStorage.setItem('asset_records', JSON.stringify(records));
+    renderRecords();
+  }
+
+  // 초기 실행 시 기존 저장 데이터 불러오기
+  renderRecords();
+</script>
+
+</body>
+</html>
